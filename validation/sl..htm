@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register & Login with OTP</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 400px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #28a745;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #218838;
+        }
+
+        .otp-btn {
+            background: #007bff;
+        }
+
+        .otp-btn:hover {
+            background: #0056b3;
+        }
+
+        .form-section {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Register</h2>
+        <form id="registerForm" class="form-section">
+            <input type="text" id="username" placeholder="Enter Username" required>
+            <input type="email" id="email" placeholder="Enter Email" required>
+            <input type="tel" id="phone" placeholder="Enter Phone Number" required>
+            <input type="password" id="password" placeholder="Enter Password" required>
+            <input type="password" id="confirmPassword" placeholder="Re-type Password" required>
+            <button type="submit">Register</button>
+        </form>
+
+        <h2>Login</h2>
+        <form id="otpForm" class="form-section">
+            <input type="email" id="loginEmail" placeholder="Enter Email" required>
+            <button type="button" class="otp-btn" onclick="generateOTP()">Generate OTP</button>
+            <input type="text" id="otp" placeholder="Enter OTP" required>
+            <button type="submit">Verify OTP</button>
+        </form>
+    </div>
+
+    <script>
+        // Register User
+        document.getElementById("registerForm").addEventListener("submit", async function(event) {
+            event.preventDefault();
+
+            const username = document.getElementById("username").value;
+            const email = document.getElementById("email").value;
+            const phone = document.getElementById("phone").value;
+            const password = document.getElementById("password").value;
+            const confirmPassword = document.getElementById("confirmPassword").value;
+
+            if (password !== confirmPassword) {
+                alert("Passwords do not match!");
+                return;
+            }
+
+            const response = await fetch("http://localhost:3000/register", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, email, phone, password })
+            });
+
+            const data = await response.json();
+            alert(data.message);
+        });
+
+        // Generate OTP for Login
+        async function generateOTP() {
+            const email = document.getElementById("loginEmail").value;
+            const response = await fetch("http://localhost:3000/generate-otp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email })
+            });
+
+            const data = await response.json();
+            alert(data.message);
+        }
+
+        // Verify OTP
+        document.getElementById("otpForm").addEventListener("submit", async function(event) {
+            event.preventDefault();
+
+            const email = document.getElementById("loginEmail").value;
+            const otp = document.getElementById("otp").value;
+
+            const response = await fetch("http://localhost:3000/verify-otp", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, otp })
+            });
+
+            const data = await response.json();
+            alert(data.message);
+        });
+    </script>
+</body>
+</html>

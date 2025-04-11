@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Landing Page - Travel Ticket Booking</title>
+    <link rel="stylesheet" href="style2.css">
+</head>
+<body style="background-color: #2e4053;">
+    <div class="container">
+        <h1>Welcome to the Travel Ticket Booking Portal</h1>
+        <p id="welcomeMessage"></p>
+
+        <section>
+            <h2>About Traveling Ticket Booking</h2>
+            <p>Welcome! You can book your travel tickets easily here. Whether you are planning a short trip or an international journey, we offer a variety of ticket options for your convenience.</p>
+            <ul>
+                <li><strong>Flight Tickets:</strong> Book flights to any destination around the world.</li>
+                <li><strong>Train Tickets:</strong> Comfortable and affordable train travel options for your commute.</li>
+                <li><strong>Bus Tickets:</strong> Easy booking for bus travel within the country.</li>
+            </ul>
+            <p>Get started by choosing your destination and travel date.</p>
+        </section>
+
+        <button onclick="logout()">Logout</button>
+    </div>
+
+    <script>
+        // Get the username from the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const username = urlParams.get('username');
+        
+        // Display a personalized welcome message
+        document.getElementById('welcomeMessage').textContent = `Hello, ${username}! We're glad to have you here.`;
+
+        // Logout function to go back to the login page
+        function logout() {
+            window.location.href = 'sl..htm';
+        }
+    </script>
+</body>
+</html>
