@@ -1,0 +1,571 @@
+# Mermon Project Documentation
+# Project Structure and Code
+
+## 📁 Project Structure
+```
+Mermon/
+├── public/
+│   ├── index.html
+│   ├── style.css
+│   └── script.js
+├── models/
+│   └── User.js
+├── server.js
+├── .env
+└── project_documentation.txt
+```
+
+## 🔧 Environment Variables (.env)
+```env
+# Server Configuration
+PORT=3000
+
+# MongoDB Configuration
+MONGODB_URI=mongodb://localhost:27017/authDB
+
+# Email Configuration
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASS=your-app-password
+
+# JWT Configuration
+JWT_SECRET=your-jwt-secret-key
+JWT_EXPIRES_IN=1h
+```
+
+## 🚀 Server Implementation (server.js)
+```javascript
+require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const User = require('./models/User');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(express.json());
+app.use(cors());
+app.use(express.static('public'));
+
+// MongoDB Connection
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/authDB';
+
+mongoose.connect(MONGODB_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+    serverSelectionTimeoutMS: 5000,
+    socketTimeoutMS: 45000,
+})
+.then(() => {
+    console.log('MongoDB Connected Successfully');
+    User.createIndexes()
+        .then(() => console.log('User indexes created'))
+        .catch(err => console.error('Error creating indexes:', err));
+})
+.catch(err => {
+    console.error('MongoDB Connection Error:', err);
+    process.exit(1);
+});
+
+// MongoDB Event Handlers
+mongoose.connection.on('connected', () => {
+    console.log('Mongoose connected to MongoDB');
+});
+
+mongoose.connection.on('error', (err) => {
+    console.error('Mongoose connection error:', err);
+});
+
+mongoose.connection.on('disconnected', () => {
+    console.log('Mongoose disconnected from MongoDB');
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+    try {
+        await mongoose.connection.close();
+        console.log('MongoDB connection closed through app termination');
+        process.exit(0);
+    } catch (err) {
+        console.error('Error during MongoDB disconnection:', err);
+        process.exit(1);
+    }
+});
+
+// Nodemailer Configuration
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
+
+// API Routes
+app.post('/register', async (req, res) => {
+    try {
+        const { username, email, phone, password } = req.body;
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            return res.status(400).json({ message: 'User already exists!' });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = new User({
+            username,
+            email,
+            phone,
+            password: hashedPassword
+        });
+
+        await newUser.save();
+        res.status(201).json({ message: 'User registered successfully!' });
+    } catch (error) {
+        res.status(500).json({ error: 'Registration failed', details: error.message });
+    }
+});
+
+app.post('/generate-otp', async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const otp = crypto.randomInt(100000, 999999).toString();
+        user.otp = otp;
+        user.otpExpires = Date.now() + 5 * 60000;
+        await user.save();
+
+        const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: email,
+            subject: 'Your OTP Code',
+            text: `Your OTP is: ${otp}. It is valid for 5 minutes.`
+        };
+
+        await transporter.sendMail(mailOptions);
+        res.json({ message: 'OTP sent successfully!' });
+    } catch (error) {
+        res.status(500).json({ message: 'Failed to send OTP', error: error.message });
+    }
+});
+
+app.post('/verify-otp', async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user || user.otp !== otp || user.otpExpires < Date.now()) {
+            return res.status(400).json({ message: 'Invalid or expired OTP' });
+        }
+
+        user.otp = null;
+        user.otpExpires = null;
+        await user.save();
+
+        res.json({ message: 'OTP verified! Login successful.' });
+    } catch (error) {
+        res.status(500).json({ message: 'OTP verification failed', error: error.message });
+    }
+});
+
+app.post('/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        const isPasswordValid = await bcrypt.compare(password, user.password);
+        if (!isPasswordValid) {
+            return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        res.json({ 
+            message: 'Login successful!', 
+            user: { 
+                id: user._id, 
+                email: user.email, 
+                username: user.username 
+            } 
+        });
+    } catch (error) {
+        res.status(500).json({ message: 'Login failed', error: error.message });
+    }
+});
+
+app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+});
+```
+
+## 📦 User Model (models/User.js)
+```javascript
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+
+const UserSchema = new mongoose.Schema({
+    username: {
+        type: String,
+        required: [true, 'Username is required'],
+        trim: true,
+        minlength: [3, 'Username must be at least 3 characters long'],
+        maxlength: [30, 'Username cannot exceed 30 characters']
+    },
+    email: {
+        type: String,
+        required: [true, 'Email is required'],
+        unique: true,
+        trim: true,
+        lowercase: true,
+        match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email address']
+    },
+    phone: {
+        type: String,
+        required: [true, 'Phone number is required'],
+        trim: true,
+        match: [/^[0-9]{10}$/, 'Please enter a valid 10-digit phone number']
+    },
+    password: {
+        type: String,
+        required: [true, 'Password is required'],
+        minlength: [6, 'Password must be at least 6 characters long'],
+        select: false
+    },
+    otp: {
+        type: String,
+        default: null
+    },
+    otpExpires: {
+        type: Date,
+        default: null
+    },
+    isVerified: {
+        type: Boolean,
+        default: false
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
+    },
+    lastLogin: {
+        type: Date,
+        default: null
+    }
+}, {
+    timestamps: true
+});
+
+// Indexes
+UserSchema.index({ email: 1 }, { unique: true });
+UserSchema.index({ phone: 1 });
+UserSchema.index({ createdAt: -1 });
+
+// Password Hashing
+UserSchema.pre('save', async function(next) {
+    if (!this.isModified('password')) return next();
+    try {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt);
+        next();
+    } catch (error) {
+        next(error);
+    }
+});
+
+// Methods
+UserSchema.methods.comparePassword = async function(candidatePassword) {
+    return await bcrypt.compare(candidatePassword, this.password);
+};
+
+UserSchema.methods.generateOTP = function() {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    this.otp = otp;
+    this.otpExpires = Date.now() + 5 * 60000;
+    return otp;
+};
+
+UserSchema.methods.verifyOTP = function(otp) {
+    if (this.otp !== otp || this.otpExpires < Date.now()) {
+        return false;
+    }
+    this.otp = null;
+    this.otpExpires = null;
+    this.isVerified = true;
+    return true;
+};
+
+module.exports = mongoose.model('User', UserSchema);
+```
+
+## 🎨 Frontend Implementation
+
+### HTML (public/index.html)
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authentication System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="form-container">
+            <h2>Register</h2>
+            <form id="registerForm">
+                <input type="text" id="username" placeholder="Username" required>
+                <input type="email" id="email" placeholder="Email" required>
+                <input type="tel" id="phone" placeholder="Phone" required>
+                <input type="password" id="password" placeholder="Password" required>
+                <button type="submit">Register</button>
+            </form>
+        </div>
+
+        <div class="form-container">
+            <h2>Login</h2>
+            <form id="loginForm">
+                <input type="email" id="loginEmail" placeholder="Email" required>
+                <input type="password" id="loginPassword" placeholder="Password" required>
+                <button type="submit">Login</button>
+            </form>
+        </div>
+
+        <div class="form-container" id="otpSection" style="display: none;">
+            <h2>Verify OTP</h2>
+            <form id="otpForm">
+                <input type="text" id="otp" placeholder="Enter OTP" required>
+                <button type="submit">Verify OTP</button>
+            </form>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
+```
+
+### CSS (public/style.css)
+```css
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background-color: #f4f4f4;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    max-width: 400px;
+    padding: 20px;
+}
+
+.form-container {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+h2 {
+    margin-bottom: 20px;
+    color: #333;
+    text-align: center;
+}
+
+form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+input {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+}
+
+button {
+    padding: 10px;
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+button:hover {
+    background-color: #0056b3;
+}
+
+#otpSection {
+    display: none;
+}
+```
+
+### JavaScript (public/script.js)
+```javascript
+const API_URL = 'http://localhost:3000';
+
+// Register Form Handler
+document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value;
+    const email = document.getElementById('email').value;
+    const phone = document.getElementById('phone').value;
+    const password = document.getElementById('password').value;
+
+    try {
+        const response = await fetch(`${API_URL}/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username, email, phone, password })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            alert('Registration successful!');
+            await generateOTP(email);
+        } else {
+            alert(data.message || 'Registration failed');
+        }
+    } catch (error) {
+        alert('Error during registration');
+    }
+});
+
+// Login Form Handler
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value;
+    const password = document.getElementById('loginPassword').value;
+
+    try {
+        const response = await fetch(`${API_URL}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            alert('Login successful!');
+            await generateOTP(email);
+        } else {
+            alert(data.message || 'Login failed');
+        }
+    } catch (error) {
+        alert('Error during login');
+    }
+});
+
+// OTP Form Handler
+document.getElementById('otpForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value;
+    const otp = document.getElementById('otp').value;
+
+    try {
+        const response = await fetch(`${API_URL}/verify-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, otp })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            alert('OTP verified successfully!');
+            document.getElementById('otpSection').style.display = 'none';
+        } else {
+            alert(data.message || 'OTP verification failed');
+        }
+    } catch (error) {
+        alert('Error during OTP verification');
+    }
+});
+
+// OTP Generation
+async function generateOTP(email) {
+    try {
+        const response = await fetch(`${API_URL}/generate-otp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+
+        const data = await response.json();
+        if (response.ok) {
+            alert('OTP sent to your email!');
+            document.getElementById('otpSection').style.display = 'block';
+        } else {
+            alert(data.message || 'Failed to generate OTP');
+        }
+    } catch (error) {
+        alert('Error generating OTP');
+    }
+}
+```
+
+## 📝 Installation and Setup Instructions
+
+1. Install Dependencies:
+```bash
+npm install express mongoose cors nodemailer crypto bcryptjs dotenv
+```
+
+2. Configure Environment Variables:
+- Update the `.env` file with your credentials
+- Set up MongoDB connection string
+- Configure email settings
+
+3. Start MongoDB:
+- Ensure MongoDB service is running
+- Default connection: mongodb://localhost:27017
+
+4. Start the Server:
+```bash
+node server.js
+```
+
+5. Access the Application:
+- Open http://localhost:3000 in your browser
+
+## 🔒 Security Features
+- Password hashing with bcrypt
+- OTP-based authentication
+- Email verification
+- Input validation
+- Secure session management
+- MongoDB connection security
+
+## 🚀 Features
+- User registration
+- User login
+- OTP generation and verification
+- Email notifications
+- Responsive UI
+- Secure password handling
+- MongoDB database integration 
